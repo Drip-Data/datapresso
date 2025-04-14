@@ -1,0 +1,105 @@
+# Default configuration for Datapresso framework
+
+project_name: datapresso_project
+output_dir: ${hydra:runtime.cwd}/outputs/${project_name}
+
+# Seed database configuration
+seed_db:
+  path: data/seed
+  format: jsonl
+  validation:
+    enabled: true
+    schema_check: true
+
+# Data generation configuration
+data_generation:
+  enabled: true
+  target_count: 5000
+  model: gpt-4-turbo
+  temperature: 0.7
+  batch_size: 10
+  max_retries: 3
+  prompt_templates:
+    path: config/prompts
+  initial_filtering:
+    enabled: true
+    min_length: 50
+    max_length: 2000
+
+# Quality assessment configuration
+quality_assessment:
+  metrics:
+    - instruction_complexity
+    - response_quality
+    - reasoning_depth
+    - safety_score
+  verification_methods:
+    - code_execution
+    - math_validation
+  llm_evaluator:
+    model: gpt-4-turbo
+    batch_size: 10
+  thresholds:
+    min_overall_score: 0.7
+
+# Data filtering configuration
+data_filtering:
+  quality_threshold: 0.8
+  diversity_weight: 0.3
+  target_size: 1000
+  domain_balance: true
+  difficulty_distribution:
+    easy: 0.2
+    medium: 0.5
+    hard: 0.3
+
+# Advanced assessment configuration
+advanced_assessment:
+  enabled: false
+  methods:
+    - ifd
+    - limr
+    - less
+  model: llama3-7b
+  batch_size: 4
+  learning_samples: 100
+
+# Training configuration
+training:
+  model: llama3
+  adapter: lora
+  lora_config:
+    r: 8
+    alpha: 16
+    dropout: 0.05
+  batch_size: 8
+  learning_rate: 2e-5
+  epochs: 3
+  warmup_steps: 100
+  weight_decay: 0.01
+  gradient_accumulation_steps: 4
+  evaluation_strategy: steps
+  eval_steps: 100
+  save_steps: 200
+
+# Evaluation configuration
+evaluation:
+  benchmark_datasets:
+    - mmlu
+    - bbh
+  custom_datasets: []
+  metrics:
+    - accuracy
+    - f1
+    - exact_match
+  human_evaluation:
+    enabled: false
+    samples: 50
+
+# Logging configuration
+logging:
+  level: INFO
+  save_path: logs/
+  console_output: true
+  file_output: true
+  log_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

@@ -1,0 +1,109 @@
+# Example configuration for Datapresso pipeline
+
+project_name: "datapresso_example"
+output_dir: "outputs/datapresso_example"
+
+# Seed database configuration
+seed_db:
+  path: "data/seed/seed_data.jsonl"
+  format: "jsonl"
+  validation:
+    enabled: true
+    schema_check: true
+
+# LLM API configuration
+llm_api:
+  default_provider: "openai"
+  providers:
+    openai:
+      # API key should be set in environment variable OPENAI_API_KEY
+      model: "gpt-4-turbo"
+      temperature: 0.7
+      max_tokens: 2048
+      max_retries: 3
+      retry_delay: 1.0
+    anthropic:
+      # API key should be set in environment variable ANTHROPIC_API_KEY
+      model: "claude-3-sonnet-20240229"
+      temperature: 0.7
+      max_tokens: 2048
+    local:
+      model_path: "models/llama3-8b"
+      device: "cuda"  # or "cpu"
+      dtype: "float16"
+
+# Data generation configuration
+data_generation:
+  enabled: true
+  model: "gpt-4-turbo"
+  target_count: 100
+  temperature: 0.7
+  max_tokens: 2048
+  prompt_templates:
+    path: "templates/generation"
+    use_few_shot: true
+    few_shot_count: 3
+
+# Quality assessment configuration
+quality_assessment:
+  metrics:
+    - "instruction_complexity"
+    - "response_quality"
+    - "reasoning_depth"
+    - "safety_score"
+  verification_methods:
+    enabled_methods:
+      - "code_execution"
+      - "math_validation"
+  llm_evaluator:
+    model: "gpt-4-turbo"
+    batch_size: 10
+    max_tokens: 1024
+  thresholds:
+    weights:
+      instruction_complexity: 0.2
+      response_quality: 0.3
+      reasoning_depth: 0.3
+      safety_score: 0.2
+    min_thresholds:
+      overall_score: 0.7
+      safety_score: 0.9
+      reasoning_depth: 0.6
+      rationale_quality: 0.7
+      answer_accuracy: 0.7
+  output_dir: "data/assessed"
+
+# Data filtering configuration
+data_filtering:
+  quality_threshold: 0.7
+  diversity_weight: 0.3
+  target_size: 50
+  difficulty_distribution:
+    easy: 0.3
+    medium: 0.5
+    hard: 0.2
+  domain_distribution: {}  # Will be auto-balanced if empty
+  quality:
+    metric_thresholds:
+      overall_score: 0.7
+      safety_score: 0.9
+      reasoning_depth: 0.6
+    rationale_threshold: 0.7
+    answer_threshold: 0.7
+  diversity:
+    dimensions:
+      - "domain"
+      - "difficulty"
+      - "content"
+    weights:
+      domain: 0.4
+      difficulty: 0.3
+      content: 0.3
+  output_dir: "data/filtered"
+
+# Logging configuration
+logging:
+  level: "INFO"
+  console_output: true
+  file_output: true
+  save_path: "logs"
