@@ -101,4 +101,4 @@ For detailed architecture, module descriptions, and advanced usage, please refer
 
 ## License
 
-This project is licensed under the MIT License - see the `LICENSE` file for details. (Assuming a LICENSE file exists or will be created).
+This project is licensed under the Apache 2.0 License - see the `LICENSE` file for details. (Assuming a LICENSE file exists or will be created).
