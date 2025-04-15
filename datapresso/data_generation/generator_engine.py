@@ -86,7 +86,7 @@ class GeneratorEngine(BaseModule):
             seed_samples = self._select_seed_samples(data, self.batch_size)
             
             # Generate samples for this batch
-            batch_results = self._generate_batch(seed_samples)
+            batch_results = self._generate_reasoning_batch(seed_samples)
             
             # Apply initial filtering
             filtered_results = self.initial_filter.filter_samples(batch_results)
@@ -144,7 +144,7 @@ class GeneratorEngine(BaseModule):
         
         return random.sample(data, count)
 
-    def _generate_batch(self, seed_samples: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _generate_reasoning_batch(self, seed_samples: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Generate a batch of samples based on seed samples.
 
@@ -167,15 +167,40 @@ class GeneratorEngine(BaseModule):
         generated_samples = []
         
         for i, seed in enumerate(seed_samples):
-            # Create a prompt for this sample
+            # Create a prompt for one sample
+
             prompt = self.prompt_manager.create_prompt(seed)
+
+            try:
+                agent_output = (
+                    self.agent.step(prompt['user_message'], response_format=DataPoint)
+                    .msgs[0]
+                    .parsed
+                )
+
+                assert isinstance(agent_output, DataPoint)
+
+                self.agent.reset()
+
+            except (TypeError, KeyError) as e:
+                logger.warning(
+                    f"Agent output issue: {e}, retrying... "
+                    f"({retries + 1}/{max_retries})"
+                )
+                retries += 1
+                continue
+
             
             # In a real implementation, this would call the LLM API
             # For now, just create a mock response
             generated_sample = {
                 "id": f"gen_{int(time.time())}_{i}",
-                "instruction": f"Generated instruction based on {seed.get('id', 'unknown')}",
-                "response": f"Generated response for the instruction",
+                "question": agent_output.question,
+                # f"Generated question based on {seed.get('id', 'unknown')}"
+                "response": {
+                    "rationale": agent_output.rationale ,
+                    "final_answer": verifier_response.result,
+                },
                 "metadata": {
                     "domain": seed.get("metadata", {}).get("domain", "unknown"),
                     "difficulty": seed.get("metadata", {}).get("difficulty", 0.5),
