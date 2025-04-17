@@ -12,20 +12,20 @@ from typing import Dict, List, Any, Optional, Union, TypedDict
 import json
 import yaml
 
+import camel
+
 
 class TemplateConfig(TypedDict):
     """Type definition for template configuration."""
     system_message: str
     user_template: str
 
-
 class PromptOutput(TypedDict):
     """Type definition for prompt generation output."""
     system_message: str
     user_message: str
 
-
-class SeedSample(TypedDict, total=False):
+class SeedSample(TypedDict, total=False): # total=False --> 某些字段可能在特定情况下不需要
     """
     Type definition for seed sample input.
     
@@ -43,8 +43,9 @@ class SeedSample(TypedDict, total=False):
         Additional metadata about the sample.
     """
     question: str
-    response: Dict[str, str]
+    response: Dict[str, Any]
     metadata: Dict[str, Any]
+
 
 
 class GenerationPromptManager:
@@ -87,136 +88,33 @@ class GenerationPromptManager:
             
         self.config = config
         self.logger = logger or logging.getLogger(self.__class__.__name__)
+
+        # Load templates
         self.templates = self._load_templates()
-        
-        self.logger.info(f"Initialized prompt manager with {len(self.templates)} templates")
 
     def _load_templates(self) -> Dict[str, TemplateConfig]:
-        """
-        Load prompt templates from files or use defaults based on configuration.
-        
-        Returns
-        -------
-        Dict[str, TemplateConfig]
-            Dictionary mapping template names to template configurations.
-        
-        Raises
-        ------
-        ValueError
-            If template type is invalid or no valid templates found.
-        """
-        template_type = self.config.get("template_type")
-        template_path = self.config.get("path")
-        
-        #TODO check 
-        if template_path:
-            templates = self._load_templates_from_path(Path(template_path))
+        """Load templates from path or use defaults."""
+        template_path = self.config.get("template_path")
+        load_path = self.config.get("self_load")
+        if template_path and load_path:
+            self.template_loader = UserTemplateLoader(self.logger)
+            templates = self.template_loader.load_templates(template_path, "generation")
             if not templates:
-                raise ValueError(f"No valid templates found in {template_path}")
+                raise ValueError( f"No valid templates found in {template_path}." )
             return templates
         
-        if template_type not in self.DEFAULT_TEMPLATE_TYPES:
-            raise ValueError(
-                f"Template type must be one of {self.DEFAULT_TEMPLATE_TYPES}, "
-                f"got: {template_type}"
-            )
+        else:
+            template_type = self.config.get("template_type")
+            if template_type == "reasoning":
+                return self._get_default_reasoning_templates()
+            elif template_type == "standard":
+                return self._get_default_standard_templates()
+            else:
+                raise ValueError(
+                    f"Template type must be one of {self.DEFAULT_TEMPLATE_TYPES}, "
+                    f"got: {template_type}"
+                )
         
-        return (
-            self._get_default_reasoning_templates() if template_type == "reasoning"
-            else self._get_default_standard_templates()
-        )
-
-    def _load_templates_from_path(self, template_path: Path) -> Dict[str, TemplateConfig]:
-        """
-        Load templates from files in the specified path.
-        
-        Parameters
-        ----------
-        template_path : Path
-            Path to template directory.
-            
-        Returns
-        -------
-        Dict[str, TemplateConfig]
-            Dictionary of loaded templates.
-        """
-        if not template_path.exists():
-            self.logger.warning(f"Template path not found: {template_path}")
-            return {}
-            
-        templates = {}
-        for file_path in template_path.glob("*.{json,yaml,yml,txt}"):
-            if not os.access(file_path, os.R_OK):
-                self.logger.error(f"Permission denied: Cannot read {file_path}")
-                continue
-                
-            template = self._load_single_template(file_path)
-            if template:
-                templates[file_path.stem] = template
-                
-        return templates
-
-    def _load_single_template(self, file_path: Path) -> Optional[TemplateConfig]:
-        """
-        Load a single template file.
-        
-        Parameters
-        ----------
-        file_path : Path
-            Path to template file.
-            
-        Returns
-        -------
-        Optional[TemplateConfig]
-            Loaded template or None if loading failed.
-        """
-        try:
-            if file_path.suffix.lower() in {'.yaml', '.yml'}:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    template_data = yaml.safe_load(f)
-            elif file_path.suffix.lower() == '.json':
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    template_data = json.load(f)
-            else:  # .txt
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    template_data = {
-                        "system_message": "Default system message for text template",
-                        "user_template": f.read()
-                    }
-                    
-            if self._is_valid_template(template_data):
-                self.logger.info(f"Loaded template: {file_path.stem}")
-                return template_data
-            
-            self.logger.warning(f"Invalid template format in {file_path}")
-            return None
-                    
-        except Exception as e:
-            self.logger.error(f"Error loading template {file_path}: {str(e)}")
-            return None
-
-    def _is_valid_template(self, template_data: Any) -> bool:
-        """
-        Validate template data structure.
-        
-        Parameters
-        ----------
-        template_data : Any
-            Template data to validate.
-            
-        Returns
-        -------
-        bool
-            True if template is valid, False otherwise.
-        """
-        return (
-            isinstance(template_data, dict) 
-            and "system_message" in template_data 
-            and "user_template" in template_data
-            and isinstance(template_data["system_message"], str)
-            and isinstance(template_data["user_template"], str)
-        )
-    
     def _get_default_reasoning_templates(self) -> Dict[str, Dict[str, str]]:
         """
         Get default reasoning prompt templates with separate system and user messages.
@@ -236,7 +134,7 @@ class GenerationPromptManager:
 
                     **Instructions:**
                     1. **Follow the Structure**  
-                    Each data point must include:  
+                    Each data point must include:   
                     - **Question**: A clear, well-formed query.  
                     - **Rationale**: A step-by-step, executable reasoning process ending 
                     with `print(final_answer)`.  
@@ -271,7 +169,21 @@ class GenerationPromptManager:
                 - Mathematical rigor and accuracy
                 - Clear step-by-step derivations
                 - Proper mathematical notation
-                - Logical progression of reasoning""",
+                - Logical progression of reasoning
+                
+                 **Instructions:**
+                    1. **Follow the Structure**  
+                    Each data point must include:   
+                    - **Question**: A clear, well-formed query.  
+                    - **Rationale**: A step-by-step, executable reasoning process ending 
+                    with `The final answer is (final_answer)`.  
+                    - **Final Answer**: The correct, concise result.  
+
+                **Output Format (Strict)**  
+                    ```
+                    Question: [Generated question]
+                    Rationale: [Steps that solve the question, outputting the answer.]
+                    Final Answer: [The Final Answer]""",
             
             "user_template": """
                 Example for reference:
@@ -284,8 +196,8 @@ class GenerationPromptManager:
 
         # Return organized templates
         return {
-            "code_generation": CODE_TEMPLATE,
-            "math_generation": MATH_TEMPLATE
+            "code": CODE_TEMPLATE,
+            "math": MATH_TEMPLATE
         }
     
     def _get_default_standard_templates(self) -> Dict[str, Dict[str, str]]:
@@ -327,14 +239,13 @@ class GenerationPromptManager:
 
         # Return organized templates
         return {
-            "basic_generation": BASIC_TEMPLATE,
-            "domain_specific": DOMAIN_TEMPLATE
+            "basic": BASIC_TEMPLATE,
+            "domain": DOMAIN_TEMPLATE
         }
-    
-    
+       
     def create_prompt(self, seed_sample: SeedSample) -> PromptOutput:
         """
-        Create a prompt for generation based on a seed sample.
+        Create a prompt for generation based on one seed sample.
 
         Parameters
         ----------
@@ -361,10 +272,9 @@ class GenerationPromptManager:
                 f"{list(self.templates.keys())}"
             )
 
-        question = seed_sample.get("question", "")
+        question = seed_sample.get("instruction", "")
         response_dict = seed_sample.get("response", {})
-        print(response_dict)
-        
+
         # Get final answer from response dict, with fallbacks
         final_answer = (
             response_dict.get("final_answer")
@@ -392,8 +302,7 @@ class GenerationPromptManager:
             "system_message": template["system_message"],
             "user_message": user_message
         }
-        
-      
+          
     def get_template_names(self) -> List[str]:
         """
         Get the names of available templates.
@@ -422,94 +331,388 @@ class GenerationPromptManager:
         return self.templates.get(name)
 
 
+class DistillPromptManager:
+    """
+    Prompt manager for distillation tasks in Datapresso framework.
+    Focuses on generating reasoning process and answer for given questions.
+    
+    Attributes
+    ----------
+    config : Dict[str, Any]
+        Configuration dictionary for the prompt manager.
+    logger : logging.Logger
+        Logger instance for tracking operations.
+    templates : Dict[str, TemplateConfig]
+        Dictionary of loaded templates.
+    """
+    
+    def __init__(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None) -> None:
+        """
+        Initialize the distillation prompt manager.
 
-# class DistillationPromptManager():
-#     """
-#     Prompt manager for distillation tasks in Datapresso framework.
-#     Focuses on generating reasoning process and answer for given questions.
-#     """
-
-#     def create_prompt(self, question: str, domain: str = "general") -> Dict[str, str]:
-#         """
-#         Create a prompt for distillation based on a question.
-
-#         Parameters
-#         ----------
-#         question : str
-#             The question to be solved
-#         domain : str, optional
-#             Domain of the question (e.g., "math", "code"), by default "general"
-
-#         Returns
-#         -------
-#         Dict[str, str]
-#             Dictionary containing system_message and user_message
-#         """
-#         template_name = self._select_distillation_template(domain)
-#         template = self.templates.get(template_name, self.templates["math_reasoning"])
-        
-#         return {
-#             "system_message": template["system_message"],
-#             "user_message": template["user_template"].format(question=question)
-#         }
-
-#     def _load_templates(self) -> Dict[str, Dict[str, str]]:
-#         """Load distillation-specific templates."""
-#         template_path = self.config.get("path")
-        
-#         if template_path:
-#             # TODO: Implement custom template loading from path
-#             pass
+        Parameters
+        ----------
+        config : Dict[str, Any]
+            Prompt manager configuration containing template settings.
+        logger : Optional[logging.Logger]
+            Logger instance for tracking operations, by default None.
+        """
+        if not isinstance(config, dict):
+            raise TypeError("Config must be a dictionary")
             
-#         return self._get_default_distillation_templates()
+        self.config = config
+        self.logger = logger or logging.getLogger(self.__class__.__name__)
+    
+        # Load templates
+        self.templates = self._load_templates()
+    
+    def _load_templates(self) -> Dict[str, TemplateConfig]:
+        """Load templates from path or use defaults."""
+        template_path = self.config.get("template_path")
+        load_path = self.config.get("self_load")
+        if template_path and load_path:
+            self.template_loader = UserTemplateLoader(self.logger)
+            templates = self.template_loader.load_templates(template_path, "generation")
+            if not templates:
+                raise ValueError( f"No valid templates found in {template_path}." )
+            return templates
+        else:
+            return self._get_default_distillation_templates()
 
-#     def _get_default_distillation_templates(self) -> Dict[str, Dict[str, str]]:
-#         """Get default distillation templates."""
-#         return {
-#             "code_reasoning": {
-#                 "system_message": """You are an advanced code reasoning assistant.
-#                     Your task is to solve programming problems by:
-#                     1. Writing executable Python code that solves the problem
-#                     2. Ensuring the code prints the final answer
-#                     3. Providing clear explanations for your solution
-                    
-#                     Format your response as:
-#                     Rationale:
-#                     [Your step-by-step reasoning and code explanation]
-                    
-#                     Code Solution:
-#                     ```python
-#                     [Your executable Python code]
-#                     ```
-                    
-#                     Final Answer:
-#                     [The answer printed by your code]""",
-                
-#                 "user_template": "Solve this programming problem:\n{question}\n"
-#             },
+    def _get_default_distillation_templates(self) -> Dict[str, TemplateConfig]:
+        """Get default distillation templates."""
+
+        CODE_TEMPLATE = {
+            "system_message": """\
+                You are an advanced code reasoning assistant.
+                Your task is to solve programming problems by:
+                1. Writing executable Python code that solves the problem
+                2. Ensuring the code prints the final answer
+
+                Format your response as:
+                Rationale:
+                [Your step-by-step reasoning and code explanation]
+
+                Code Solution:
+                ```python
+                [Your executable Python code]
+                ```
+
+                Final Answer:
+                [The answer printed by your code]""",
             
-#             "math_reasoning": {
-#                 "system_message": """You are an advanced mathematics reasoning assistant.
-#                     Your task is to solve mathematical problems by:
-#                     1. Breaking down the problem into clear steps
-#                     2. Showing your work with proper mathematical notation
-#                     3. Providing a clear final answer
-                    
-#                     Format your response as:
-#                     Rationale:
-#                     [Your step-by-step mathematical reasoning]
-                    
-#                     Final Answer:
-#                     [Your final answer in LaTeX format: \boxed{{answer}}]""",
-                
-#                 "user_template": "Solve this mathematical problem:\n{question}\n"
-#             }
-#         }
+            "user_template": "Solve this programming problem:\n{question}\n"
+        }
 
-#     def _select_distillation_template(self, domain: str) -> str:
-#         """Select appropriate template based on question domain."""
-#         domain_template_mapping = {
-#             "code": "code_reasoning",
-#             "math": "math_reasoning",
-#         }
-#         return domain_template_mapping.get(domain.lower(), "math_reasoning")
+        CODE_THINK_TEMPLATE = {
+            "system_message": """\
+                You are an advanced code reasoning assistant.
+                Your task is to solve programming problems by providing both internal reasoning and final solution.
+
+                Format your response as:
+                <think>
+                [Your internal step-by-step thought process about:
+                 - Problem analysis
+                 - Approach selection
+                 - Key algorithms or data structures to use]
+                </think>
+
+                Rationale:
+                [Your step-by-step code explanation]
+
+                Code Solution:
+                ```python
+                [Your executable Python code]
+                ```
+
+                Final Answer:
+                [The answer printed by your code]""",
+            
+            "user_template": "Solve this programming problem:\n{question}\n"
+        }
+
+        MATH_TEMPLATE = {
+            "system_message": """\
+                You are an advanced mathematics reasoning assistant.
+                Your task is to solve mathematical problems by:
+                1. Breaking down the problem into clear steps
+                2. Showing your work with proper mathematical notation
+                3. Providing a clear final answer
+                
+                Format your response as:
+                Rationale:
+                [Your step-by-step mathematical reasoning]
+                
+                Final Answer:
+                [Your final answer in LaTeX format: \boxed{{answer}}]""",
+            
+            "user_template": "Solve this mathematical problem:\n{question}\n"
+        }
+
+        MATH_THINK_TEMPLATE = {
+            "system_message": """\
+                You are an advanced mathematics reasoning assistant.
+                Your task is to solve mathematical problems by providing both internal reasoning and final solution.
+
+                Format your response as:
+                <think>
+                [Your internal mathematical thinking process:
+                 - Concept identification
+                 - Strategy selection
+                 - Key insights and approaches]
+                </think>
+
+                Rationale:
+                [Your formal step-by-step mathematical derivation]
+                
+                Final Answer:
+                [Your final answer in LaTeX format: \boxed{{answer}}]""",
+            
+            "user_template": "Solve this mathematical problem:\n{question}\n"
+        }
+
+        templates = {
+            "code_reasoning": CODE_TEMPLATE,
+            "math_reasoning": MATH_TEMPLATE,
+        }
+
+        # Add think templates if required
+        if self.config.get("include_think_process", False):
+            templates.update({
+                "code_think_reasoning": CODE_THINK_TEMPLATE,
+                "math_think_reasoning": MATH_THINK_TEMPLATE
+            })
+
+        return templates
+
+    def create_prompt(self, seed_sample: Dict[str, str]) -> PromptOutput:
+        """
+        Create a prompt for distillation based on a seed sample.
+
+        Parameters
+        ----------
+        seed_sample : Dict[str, str]
+            Dictionary containing the question and optional domain metadata.
+
+        Returns
+        -------
+        PromptOutput
+            Dictionary containing system_message and user_message.
+            If include_think_process is True in config, the template will include
+            the <think> tags for capturing internal reasoning process.
+        """
+        template_name = self.config.get("template_name")
+        include_think = self.config.get("include_think_process", False)
+
+        # Modify template name if think process is required
+        if include_think and not template_name.startswith("think"):
+            template_name = f"{template_name.replace('reasoning', 'think_reasoning')}"
+
+        template = self.templates.get(template_name)
+        if not template:    
+            raise ValueError(
+                f"Template '{template_name}' not found in available templates: "
+                f"{list(self.templates.keys())}"
+            )
+
+        # Clean template format
+        system_message = _clean_template_format(template["system_message"])
+        user_template = _clean_template_format(template["user_template"])
+
+        question = seed_sample.get("instruction", "")
+        user_message = user_template.format(question=question)
+
+        return {
+            "system_message": system_message,
+            "user_message": user_message
+        }
+
+    def get_template_names(self) -> List[str]:
+        """
+        Get the names of available templates.
+
+        Returns
+        -------
+        List[str]
+            List of template names.
+        """
+        return list(self.templates.keys())
+
+    def get_template(self, name: str) -> Optional[TemplateConfig]:
+        """
+        Get a specific template by name.
+
+        Parameters
+        ----------
+        name : str
+            Template name.
+
+        Returns
+        -------
+        Optional[TemplateConfig]
+            Template configuration if found, None otherwise.
+        """
+        return self.templates.get(name)
+
+
+# TODO:check the code , currently do not support self-loading 
+class UserTemplateLoader:
+    """
+    Handles loading of user-defined templates from local files.
+    Supports both generation and distillation templates.
+    
+    Attributes
+    ----------
+    logger : logging.Logger
+        Logger instance for tracking operations.
+    """
+    
+    def __init__(self, logger: Optional[logging.Logger] = None) -> None:
+        """
+        Initialize the template loader.
+
+        Parameters
+        ----------
+        logger : Optional[logging.Logger]
+            Logger instance for tracking operations.
+        """
+        self.logger = logger or logging.getLogger(self.__class__.__name__)
+
+    def load_templates(self, template_path: Union[str, Path], template_type: str) -> Dict[str, TemplateConfig]:
+        """
+        Load templates from the specified path.
+        
+        Parameters
+        ----------
+        template_path : Union[str, Path]
+            Path to template directory.
+        template_type : str
+            Type of templates to load ('generation' or 'distillation').
+            
+        Returns
+        -------
+        Dict[str, TemplateConfig]
+            Dictionary of loaded templates.
+        """
+        if isinstance(template_path, str):
+            template_path = Path(template_path)
+            
+        if not template_path.exists():
+            self.logger.warning(f"Template path not found: {template_path}")
+            return {}
+
+        templates = {}
+        
+        # Load templates based on type
+        if template_type == "generation":
+            templates.update(self._load_generation_templates(template_path))
+        elif template_type == "distillation":
+            templates.update(self._load_distillation_templates(template_path))
+        else:
+            self.logger.warning(f"Unknown template type: {template_type}")
+            
+        return templates
+
+    def _load_generation_templates(self, template_path: Path) -> Dict[str, TemplateConfig]:
+        """Load generation-specific templates."""
+        templates = {}
+        generation_path = template_path / "generation"
+        
+        if generation_path.exists():
+            for file_path in generation_path.glob("*.{json,yaml,yml}"):
+                template = self._load_single_template(file_path)
+                if template:
+                    templates[file_path.stem] = template
+                    
+        return templates
+
+    def _load_distillation_templates(self, template_path: Path) -> Dict[str, TemplateConfig]:
+        """Load distillation-specific templates."""
+        templates = {}
+        distillation_path = template_path / "distillation"
+        
+        if distillation_path.exists():
+            for file_path in distillation_path.glob("*.{json,yaml,yml}"):
+                template = self._load_single_template(file_path)
+                if template:
+                    templates[file_path.stem] = template
+                    
+        return templates
+
+    def _load_single_template(self, file_path: Path) -> Optional[TemplateConfig]:
+        """
+        Load a single template file.
+        
+        Parameters
+        ----------
+        file_path : Path
+            Path to template file.
+            
+        Returns
+        -------
+        Optional[TemplateConfig]
+            Loaded template or None if loading failed.
+        """
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                if file_path.suffix.lower() in {'.yaml', '.yml'}:
+                    template_data = yaml.safe_load(f)
+                else:
+                    template_data = json.load(f)
+                    
+            if self._is_valid_template(template_data):
+                self.logger.info(f"Loaded template: {file_path.stem}")
+                return template_data
+                
+            self.logger.warning(f"Invalid template format in {file_path}")
+            
+        except Exception as e:
+            self.logger.error(f"Error loading template {file_path}: {str(e)}")
+            
+        return None
+
+    def _is_valid_template(self, template_data: Any) -> bool:
+        """
+        Validate template data structure.
+        
+        Parameters
+        ----------
+        template_data : Any
+            Template data to validate.
+            
+        Returns
+        -------
+        bool
+            True if template is valid, False otherwise.
+        """
+        return (
+            isinstance(template_data, dict) 
+            and "system_message" in template_data 
+            and "user_template" in template_data
+            and isinstance(template_data["system_message"], str)
+            and isinstance(template_data["user_template"], str)
+        )
+
+def _clean_template_format(template: str) -> str:
+    """
+    Clean template format by removing extra indentation while preserving newlines.
+    
+    Parameters
+    ----------
+    template : str
+        Input template string with potential extra indentation.
+        
+    Returns
+    -------
+    str
+        Cleaned template string.
+    """
+    # Split into lines and remove empty strings
+    lines = [line for line in template.split('\n') if line.strip()]
+    
+    # Find minimum indentation (excluding empty lines)
+    min_indent = min(len(line) - len(line.lstrip()) for line in lines if line.strip())
+    
+    # Remove common indentation and join lines
+    cleaned_lines = [line[min_indent:] if line.strip() else '' for line in lines]
+    return '\n'.join(cleaned_lines)
