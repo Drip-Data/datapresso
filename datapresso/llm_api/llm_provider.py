@@ -52,14 +52,14 @@ class LLMProvider(ABC):
         self.request_history = []
 
     @abstractmethod
-    def generate(self, prompt: str, **kwargs) -> Dict[str, Any]:
+    def generate(self, messages: List[Dict[str, str]], **kwargs) -> Dict[str, Any]:
         """
-        Generate text from a prompt.
+        Generate text based on a list of messages (system, user, assistant roles).
 
         Parameters
         ----------
-        prompt : str
-            Input prompt.
+        messages : List[Dict[str, str]]
+            List of message dictionaries, e.g., [{"role": "system", "content": "..."}, {"role": "user", "content": "..."}]
         **kwargs : Dict[str, Any]
             Additional parameters for the provider.
 
@@ -71,14 +71,14 @@ class LLMProvider(ABC):
         pass
 
     @abstractmethod
-    def generate_with_structured_output(self, prompt: str, output_schema: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+    def generate_with_structured_output(self, messages: List[Dict[str, str]], output_schema: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """
-        Generate structured output from a prompt.
+        Generate structured output based on a list of messages.
 
         Parameters
         ----------
-        prompt : str
-            Input prompt.
+        messages : List[Dict[str, str]]
+            List of message dictionaries, e.g., [{"role": "system", "content": "..."}, {"role": "user", "content": "..."}]
         output_schema : Dict[str, Any]
             Schema defining the expected output structure.
         **kwargs : Dict[str, Any]
@@ -92,21 +92,33 @@ class LLMProvider(ABC):
         pass
 
     @abstractmethod
-    def generate_batch(self, prompts: List[str], **kwargs) -> List[Dict[str, Any]]:
+    def generate_batch(self, messages_list: List[List[Dict[str, str]]], **kwargs) -> List[Dict[str, Any]]:
         """
-        Generate text for multiple prompts.
+        Generate text for multiple sets of messages.
 
         Parameters
         ----------
-        prompts : List[str]
-            List of input prompts.
+        messages_list : List[List[Dict[str, str]]]
+            List of message lists. Each inner list is a conversation history.
         **kwargs : Dict[str, Any]
             Additional parameters for the provider.
 
         Returns
         -------
         List[Dict[str, Any]]
-            List of responses for each prompt.
+            List of responses for each message list.
+        """
+        pass
+
+    @abstractmethod
+    def list_available_models(self) -> List[str]:
+        """
+        List available models for this provider.
+
+        Returns
+        -------
+        List[str]
+            A list of model names supported by the provider.
         """
         pass
 

@@ -60,14 +60,14 @@ class OpenAIProvider(LLMProvider):
         
         self.logger.info(f"Initialized OpenAI provider with model: {self.default_model}")
 
-    def generate(self, prompt: str, **kwargs) -> Dict[str, Any]:
+    def generate(self, messages: List[Dict[str, str]], **kwargs) -> Dict[str, Any]:
         """
-        Generate text from a prompt using OpenAI's API.
+        Generate text based on a list of messages using OpenAI's API.
 
         Parameters
         ----------
-        prompt : str
-            Input prompt.
+        messages : List[Dict[str, str]]
+            List of message dictionaries, e.g., [{"role": "system", "content": "..."}, {"role": "user", "content": "..."}]
         **kwargs : Dict[str, Any]
             Additional parameters for the API.
 
@@ -83,7 +83,7 @@ class OpenAIProvider(LLMProvider):
         
         request_data = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens
         }
@@ -107,16 +107,16 @@ class OpenAIProvider(LLMProvider):
         
         return processed_response
 
-    def generate_with_structured_output(self, prompt: str, output_schema: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+    def generate_with_structured_output(self, messages: List[Dict[str, str]], output_schema: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """
-        Generate structured output from a prompt using OpenAI's API.
+        Generate structured output based on a list of messages using OpenAI's API.
 
         Parameters
         ----------
-        prompt : str
-            Input prompt.
+        messages : List[Dict[str, str]]
+            List of message dictionaries, e.g., [{"role": "system", "content": "..."}, {"role": "user", "content": "..."}]
         output_schema : Dict[str, Any]
-            Schema defining the expected output structure.
+            Schema defining the expected output structure (used for function calling).
         **kwargs : Dict[str, Any]
             Additional parameters for the API.
 
@@ -146,7 +146,7 @@ class OpenAIProvider(LLMProvider):
         
         request_data = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "functions": functions,
             "function_call": {"name": function_name},
             "temperature": temperature,
@@ -172,37 +172,50 @@ class OpenAIProvider(LLMProvider):
         
         return processed_response
 
-    def generate_batch(self, prompts: List[str], **kwargs) -> List[Dict[str, Any]]:
+    def generate_batch(self, messages_list: List[List[Dict[str, str]]], **kwargs) -> List[Dict[str, Any]]:
         """
-        Generate text for multiple prompts using OpenAI's API.
+        Generate text for multiple sets of messages using OpenAI's API.
+        Note: This currently makes sequential calls.
 
         Parameters
         ----------
-        prompts : List[str]
-            List of input prompts.
+        messages_list : List[List[Dict[str, str]]]
+            List of message lists. Each inner list is a conversation history.
         **kwargs : Dict[str, Any]
             Additional parameters for the API.
 
         Returns
         -------
         List[Dict[str, Any]]
-            List of responses for each prompt.
+            List of responses for each message list.
         """
-        self.logger.info(f"Generating responses for {len(prompts)} prompts")
+        self.logger.info(f"Generating responses for {len(messages_list)} message lists (sequentially)")
         
         responses = []
         
-        # Process each prompt
-        for i, prompt in enumerate(prompts):
-            self.logger.debug(f"Processing prompt {i+1}/{len(prompts)}")
-            
+        # Process each message list
+        for i, messages in enumerate(messages_list):
+            self.logger.debug(f"Processing message list {i+1}/{len(messages_list)}")
+
             # Generate response
-            response = self.generate(prompt, **kwargs)
-            responses.append(response)
-            
-            # Add small delay between requests to avoid rate limiting
-            if i < len(prompts) - 1:
-                time.sleep(0.5)
+            try:
+                response = self.generate(messages, **kwargs)
+                responses.append(response)
+            except Exception as e:
+                self.logger.error(f"Failed to generate response for message list {i+1}: {str(e)}")
+                # Append an error response or handle as needed
+                responses.append({
+                    "text": "",
+                    "error": {"message": f"Generation failed: {str(e)}", "type": "batch_error"},
+                    "model": kwargs.get("model", self.default_model),
+                    "latency": 0.0,
+                    "usage": {},
+                    "cost": 0.0
+                })
+
+            # Add small delay between requests to potentially avoid rate limiting
+            if i < len(messages_list) - 1:
+                time.sleep(self.retry_delay * 0.5) # Use a fraction of retry delay
                 
         return responses
 
@@ -396,3 +409,40 @@ class OpenAIProvider(LLMProvider):
         completion_cost = (completion_tokens / 1000) * model_costs["completion"]
         
         return prompt_cost + completion_cost
+
+    def list_available_models(self) -> List[str]:
+        """
+        List available models from the OpenAI API.
+
+        Returns
+        -------
+        List[str]
+            A list of model IDs supported by the provider.
+
+        Raises
+        ------
+        RuntimeError
+            If the API request fails.
+        """
+        endpoint = "models"
+        url = f"{self.api_base}/{endpoint}"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+        }
+
+        try:
+            response = requests.get(url, headers=headers, timeout=self.timeout)
+            response.raise_for_status()  # Raise an exception for bad status codes
+            models_data = response.json()
+
+            # Extract model IDs
+            model_ids = [model.get("id") for model in models_data.get("data", []) if model.get("id")]
+            return sorted(model_ids)
+
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Failed to fetch available models from OpenAI: {str(e)}")
+            # Re-raise as a runtime error or return an empty list based on desired behavior
+            raise RuntimeError(f"Failed to fetch available models from OpenAI: {str(e)}") from e
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Failed to parse models response from OpenAI: {str(e)}")
+            raise RuntimeError(f"Failed to parse models response from OpenAI: {str(e)}") from e
