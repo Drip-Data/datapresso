@@ -411,10 +411,7 @@ class DistillPromptManager:
 
                 Format your response as:
                 <think>
-                [Your internal step-by-step thought process about:
-                 - Problem analysis
-                 - Approach selection
-                 - Key algorithms or data structures to use]
+                [Your internal step-by-step thought process]
                 </think>
 
                 Rationale:
@@ -456,10 +453,7 @@ class DistillPromptManager:
 
                 Format your response as:
                 <think>
-                [Your internal mathematical thinking process:
-                 - Concept identification
-                 - Strategy selection
-                 - Key insights and approaches]
+                [Your internal mathematical thinking process]
                 </think>
 
                 Rationale:
@@ -479,8 +473,8 @@ class DistillPromptManager:
         # Add think templates if required
         if self.config.get("include_think_process", False):
             templates.update({
-                "code_think_reasoning": CODE_THINK_TEMPLATE,
-                "math_think_reasoning": MATH_THINK_TEMPLATE
+                "code_reasoning_think": CODE_THINK_TEMPLATE,
+                "math_reasoning_think": MATH_THINK_TEMPLATE
             })
 
         return templates
@@ -505,8 +499,8 @@ class DistillPromptManager:
         include_think = self.config.get("include_think_process", False)
 
         # Modify template name if think process is required
-        if include_think and not template_name.startswith("think"):
-            template_name = f"{template_name.replace('reasoning', 'think_reasoning')}"
+        if include_think:
+            template_name = template_name+"_think"
 
         template = self.templates.get(template_name)
         if not template:    
@@ -553,6 +547,89 @@ class DistillPromptManager:
             Template configuration if found, None otherwise.
         """
         return self.templates.get(name)
+
+
+class VerificationPromptManager:
+    """
+    Prompt manager for verification tasks in Datapresso framework.
+    Focuses on generating prompts for verifying the correctness of generated answers.
+    
+    Attributes
+    ----------
+    config : Dict[str, Any]
+        Configuration dictionary for the prompt manager.
+    logger : logging.Logger
+        Logger instance for tracking operations.
+    templates : Dict[str, TemplateConfig]
+        Dictionary of loaded templates.
+    """
+
+    def __init__(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None) -> None:
+        """
+        Initialize the verification prompt manager.
+
+        Parameters
+        ----------
+        config : Dict[str, Any]
+            Prompt manager configuration containing template settings.
+        logger : Optional[logging.Logger]
+            Logger instance for tracking operations, by default None.
+        """
+
+        self.config = config
+        # Load templates
+        self.templates = self._load_templates()
+        
+
+    def create_prompt(self, seed_sample: Dict[str, str]) -> PromptOutput:
+        question = seed_sample.get("instruction", "")
+        template_name = self.config.get("template_name")
+        template = self.templates.get(template_name)
+
+        question = seed_sample.get("instruction", "")
+        
+        user_message = template["user_template"].format(
+            question=question)
+        
+        return {
+            "system_message": template["system_message"],
+            "user_message": user_message
+        }
+    
+    def _load_templates(self) -> Dict[str, TemplateConfig]:
+        """Load templates from path or use defaults."""
+        template_path = self.config.get("template_path")
+        load_path = self.config.get("self_load")
+        if template_path and load_path:
+            self.template_loader = UserTemplateLoader(self.logger)
+            templates = self.template_loader.load_templates(template_path, "generation")
+            if not templates:
+                raise ValueError( f"No valid templates found in {template_path}." )
+
+        else:
+            templates = self.get_templates()
+        return templates
+
+    def get_templates(self) -> PromptOutput:
+        VERIFICATION_TEMPLATE = {
+            "system_message": """\
+                You are an agent designed to answer mathematical questions with clarity and precision.
+                Your task is to provide a step-by-step explanation for any mathematical problem posed by the user, ensuring the response is easy to follow. Adhere to these guidelines:
+                Analyze the mathematical question carefully and break down the solution process into clear, logical steps.
+                Use natural language to explain each step, incorporating LaTeX notation (e.g., $x + 2$)
+                for mathematical expressions when helpful. Conclude your response with the final answer enclosed
+                in a LaTeX \boxed{} environment (e.g., \boxed{5}).
+                Place this at the end of your explanation as a standalone statement.
+                It should be a Python expression, for example "[1, 2, 3]" for a list. """,
+            
+            "user_template": "The question you should answer is:\n{question}\n"
+        }
+       
+        templates = {
+            "cot_verification": VERIFICATION_TEMPLATE,
+        }
+        return templates
+
 
 
 # TODO:check the code , currently do not support self-loading 

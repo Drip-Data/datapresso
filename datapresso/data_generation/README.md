@@ -56,6 +56,7 @@ graph TD
   - [ ] 与prompt_manager接口统一
 - [ ] prompt_manager修改
   - [ ] 数据合成:推理数据(q,r,a)和 普通(q,a)数据合成
+  - [ ] 推理数据:推理数据(q,r,a)和 普通(q,a)数据合成
   - [ ] 数据蒸馏:推理链生成模版
   - [ ] 数据正确性验证:verification模版
 - [ ] 补充文档
