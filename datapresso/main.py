@@ -168,7 +168,9 @@ class Pipeline:
             # Step 2: Generate data (if enabled)
             if self.generator:
                 self.logger.info("Step 2: Generating data")
-                generated_data = self.generator.process(seed_data)
+                generated_data = self.generator.process(seed_data) 
+                # NOTE(wenqian): 这里需要注意,如果使用了合成数据,那应该需要判断在下游任务评估中是否需要把seed_data和gen_data进行合并？
+                # TODO(wenqian): 目前暂时先加入判断: 1. 直接使用gen_data进行合并 ; 2. combined_data = seed_data + gen_data  
                 self.results["generated_data"] = {
                     "count": len(generated_data),
                     "path": os.path.join(self.config.get("output_dir", "outputs"), "generated")
