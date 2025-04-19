@@ -1,0 +1,108 @@
+# Datapresso LLM API - 提示模板配置 (Prompt Templates Configuration) for quality_assessment
+# -----------------------------------------
+# 包含系统提示模板和输出格式配置
+
+# --- 系统提示模板 ---
+# 定义此阶段可重用的系统提示。通过名称引用。
+system_prompt_templates:
+  # 默认通用助手
+  default: "You are a helpful AI assistant."
+
+  # --- 质量评估任务的提示 ---
+
+  # 通用质量评估 (配合 quality_score schema)
+  quality_assessor_general: |
+    You are an expert evaluator. Assess the quality of the provided instruction-response pair based on the following criteria:
+    - Clarity: Is the instruction clear and unambiguous? Is the response easy to understand?
+    - Coherence: Does the response logically follow the instruction? Is the reasoning (if any) sound and well-structured?
+    - Accuracy: Is the information provided in the response factually correct and accurate according to the instruction? (If external knowledge is required, assess based on general knowledge unless stated otherwise).
+    - Relevance: Does the response directly and fully address the instruction without unnecessary information?
+    Provide a score from 1 (very poor) to 5 (excellent) for each criterion. Also, provide a brief justification for your scores, highlighting specific strengths or weaknesses.
+    Output your assessment in the specified JSON format.
+
+  # 指令复杂度评估 (配合 instruction_complexity schema)
+  instruction_complexity_assessor: |
+    You are an expert evaluator. Analyze the complexity of the provided instruction. Consider factors like:
+    - Required knowledge domain and depth.
+    - Number of constraints or steps involved.
+    - Ambiguity or need for clarification.
+    - Cognitive load required to understand and answer.
+    Assign a complexity score (e.g., 1-5 or 0.0-1.0) and provide a brief justification. Output in the specified JSON format.
+
+  # 响应质量评估 (侧重于响应本身)
+  response_quality_assessor: |
+    You are an expert evaluator. Assess the quality of the provided response *relative to the instruction*. Consider:
+    - Correctness and factual accuracy.
+    - Completeness in addressing all parts of the instruction.
+    - Clarity and readability of the language.
+    - Appropriateness of tone and style.
+    - Quality of reasoning or explanation (if applicable).
+    Assign relevant scores and provide justification. Output in the specified JSON format.
+
+  # 安全性评估
+  safety_assessor: |
+    You are a safety evaluator. Analyze the provided instruction and response for any potentially harmful, unethical, biased, or inappropriate content. Consider categories like hate speech, harassment, dangerous content, misinformation, etc.
+    Provide a safety score (e.g., 0.0 for harmful, 1.0 for safe) and identify any specific safety concerns found. Output in the specified JSON format.
+
+# --- 输出模式模板 ---
+# 定义此阶段结构化输出的可重用JSON模式。通过名称引用。
+output_schema_templates:
+  # 质量评分模式
+  quality_score:
+    type: object
+    properties:
+      clarity:
+        type: number
+        description: "清晰度得分，从1（低）到5（高）。"
+      coherence:
+        type: number
+        description: "连贯性得分，从1（低）到5（高）。"
+      accuracy:
+        type: number
+        description: "相对于任何来源/上下文的准确性得分，从1（低）到5（高）。"
+      relevance:
+        type: number
+        description: "与提示/任务相关性的得分，从1（低）到5（高）。"
+      justification:
+        type: string
+        description: "对给出分数的简要解释。"
+    required: [clarity, coherence, accuracy, relevance, justification]
+
+  # 指令复杂度评估模式
+  instruction_complexity:
+    type: object
+    properties:
+      complexity_score:
+        type: number
+        description: "指令复杂度得分，从1（简单）到5（非常复杂）。"
+      knowledge_domains:
+        type: array
+        items: { type: string }
+        description: "完成指令所需的知识领域列表。"
+      reasoning_steps:
+        type: integer
+        description: "估计完成指令所需的推理步骤数量。"
+      explanation:
+        type: string
+        description: "对复杂度评分的详细解释。"
+    required: [complexity_score, explanation]
+
+  # 安全性评估模式
+  safety_assessment:
+    type: object
+    properties:
+      safety_score:
+        type: number
+        description: "安全性得分，从0.0（有害）到1.0（安全）。"
+      concerns:
+        type: array
+        items: { type: string }
+        description: "发现的具体安全问题列表。"
+      categories:
+        type: array
+        items: { type: string }
+        description: "问题类别（如仁性言论、骚扰、危险内容、错误信息等）。"
+      explanation:
+        type: string
+        description: "对安全性评估的详细解释。"
+    required: [safety_score, explanation]

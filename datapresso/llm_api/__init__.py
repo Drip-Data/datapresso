@@ -19,8 +19,8 @@ Usage:
 
 To add support for a new stage (e.g., 'my_analyzer'):
 1. Add 'my_analyzer' to the KNOWN_STAGES list below (or call register_llm_stage).
-2. Ensure a `my_analyzer.yaml` configuration file exists or will be created from
-   the template in `datapresso/datapresso/llm_api/configs/`.
+2. A configuration directory will be created at `datapresso/datapresso/llm_api/configs/my_analyzer/`
+   with separate files for main configuration, prompts, and model schemas.
 3. Users can then `from datapresso.llm_api import my_analyzer_api`.
 """
 
@@ -33,7 +33,7 @@ from typing import List, Optional, Dict, Any
 from .llm_provider import LLMProvider
 from .llm_api_manager import LLMAPIManager
 from .stage_api import StageLLMApi
-from .config_loader import load_llm_config # Keep loader accessible if needed elsewhere
+from .config_loader import load_llm_config, create_config_directory, migrate_legacy_config # Keep loaders accessible if needed elsewhere
 
 # Provider implementations
 from .openai_provider import OpenAIProvider
@@ -78,26 +78,8 @@ def _initialize_stage_api(stage_name: str) -> Optional[StageLLMApi]:
     if stage_name in _initialized_apis:
         return _initialized_apis[stage_name] # Return cached instance (or None if init failed)
 
-    config_path = CONFIG_DIR / f"{stage_name}.yaml"
-    if not config_path.is_file():
-        if DEFAULT_TEMPLATE_PATH.is_file():
-            try:
-                CONFIG_DIR.mkdir(parents=True, exist_ok=True) # Ensure config dir exists
-                shutil.copy(DEFAULT_TEMPLATE_PATH, config_path)
-                logger.warning(
-                    f"Default LLM config created for stage '{stage_name}' at {config_path}. "
-                    f"Please review and configure API keys and other settings."
-                )
-            except Exception as e:
-                logger.error(f"Failed to create default config for stage '{stage_name}' from template: {e}. LLM API for this stage will be unavailable.")
-                _initialized_apis[stage_name] = None
-                return None
-        else:
-            logger.error(f"LLM config file for stage '{stage_name}' not found at {config_path}, and default template {DEFAULT_TEMPLATE_PATH} is missing. LLM API for this stage will be unavailable.")
-            _initialized_apis[stage_name] = None
-            return None
-
-    # Config file exists or was created, now try to initialize StageLLMApi
+    # StageLLMApi now handles both legacy and new config formats
+    # It will create a new config directory if neither exists
     try:
         stage_api_instance = StageLLMApi(stage_name=stage_name, config_dir=CONFIG_DIR)
         if stage_api_instance.is_available():

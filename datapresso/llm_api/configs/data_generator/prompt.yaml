@@ -1,0 +1,108 @@
+# Datapresso LLM API - 提示模板配置 (Prompt Templates Configuration) for data_generator
+# -----------------------------------------
+# 包含系统提示模板和输出格式配置
+
+# --- 系统提示模板 ---
+# 定义此阶段可重用的系统提示。通过名称引用。
+system_prompt_templates:
+  # 默认通用助手
+  default: "You are a helpful AI assistant."
+
+  # --- 数据生成任务的提示 ---
+
+  # 基于种子生成新的指令和响应
+  generate_from_seed: |
+    You are an expert data generator. Your task is to create a new, high-quality instruction-response pair.
+    This new pair should be similar in style, topic, and complexity to the provided seed example, but distinct in its specific content.
+    Ensure the new instruction is clear, specific, and answerable.
+    Ensure the new response is accurate, detailed (including rationale or step-by-step thinking if appropriate, similar to the seed), and directly addresses the *new* instruction you generated.
+    Avoid directly copying phrases from the seed example unless necessary for context.
+
+    Seed Example:
+    Instruction: {seed_instruction}
+    Response: {seed_response_text}
+
+    Generate the new instruction and response pair, and format the output according to the specified JSON schema.
+
+  # 提升种子指令的复杂度
+  increase_complexity: |
+    You are an expert data generator. Given the following seed instruction, create a new instruction that is conceptually similar but significantly more complex or requires deeper reasoning. The new instruction should be clear and solvable.
+
+    Seed Instruction: {seed_instruction}
+
+    Generate the more complex instruction.
+
+  # 改变种子指令的领域或上下文
+  change_context: |
+    You are an expert data generator. Adapt the following seed instruction to a different context or domain (e.g., change from physics to biology, or from formal to informal tone). The core task or question type should remain similar if possible, but applied to the new context. The new instruction must be clear and answerable.
+
+    Seed Instruction: {seed_instruction}
+    Target Context/Domain: {target_context}
+
+    Generate the adapted instruction for the target context/domain.
+
+# --- 输出模式模板 ---
+# 定义此阶段结构化输出的可重用JSON模式。通过名称引用。
+output_schema_templates:
+  # 生成的指令-响应对的模式
+  generated_instruction_response:
+    type: object
+    properties:
+      instruction:
+        type: string
+        description: "新生成的清晰、具体的指令。"
+      response:
+        type: object
+        description: "对应于生成的指令的响应。"
+        properties:
+          origin_text:
+            type: string
+            description: "响应的主要文本内容。"
+          rationale:
+            type: string
+            description: "(可选) 响应背后的逐步推理、解释或思考过程。"
+          final_answer:
+            type: string
+            description: "(可选) 从响应中提取的简洁最终答案，如果适用的话（例如，对于数学、多选题）。"
+        required: [origin_text]
+    required: [instruction, response]
+
+  # 质量评分模式
+  quality_score:
+    type: object
+    properties:
+      clarity:
+        type: number
+        description: "清晰度得分，从1（低）到5（高）。"
+      coherence:
+        type: number
+        description: "连贯性得分，从1（低）到5（高）。"
+      accuracy:
+        type: number
+        description: "相对于任何来源/上下文的准确性得分，从1（低）到5（高）。"
+      relevance:
+        type: number
+        description: "与提示/任务相关性的得分，从1（低）到5（高）。"
+      justification:
+        type: string
+        description: "对给出分数的简要解释。"
+    required: [clarity, coherence, accuracy, relevance, justification]
+
+  # 指令复杂度评估模式
+  instruction_complexity:
+    type: object
+    properties:
+      complexity_score:
+        type: number
+        description: "指令复杂度得分，从1（简单）到5（非常复杂）。"
+      knowledge_domains:
+        type: array
+        items: { type: string }
+        description: "完成指令所需的知识领域列表。"
+      reasoning_steps:
+        type: integer
+        description: "估计完成指令所需的推理步骤数量。"
+      explanation:
+        type: string
+        description: "对复杂度评分的详细解释。"
+    required: [complexity_score, explanation]

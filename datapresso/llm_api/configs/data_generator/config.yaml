@@ -1,0 +1,21 @@
+# Datapresso LLM API - 全局配置 (Global Configuration) for data_generator
+# -----------------------------------------
+# 包含全局设置和默认配置
+
+# 默认提供商 - 如果API调用未指定提供商，使用此值
+# 必须匹配model.yaml中'providers'部分的某个键
+default_provider: openai
+
+# 全局设置 - 应用于所有提供商，除非在特定提供商配置中被覆盖
+global_settings:
+  max_retries: 3          # API调用失败时的重试次数
+  retry_delay: 1.0        # 首次重试前的延迟秒数（使用指数退避）
+  timeout: 120            # API请求超时秒数
+  temperature: 0.7        # 默认温度值
+  max_tokens: 4096        # 默认最大令牌数
+
+# 数据生成设置 - 特定于数据生成阶段的设置
+data_generation_settings:
+  batch_size: 10          # 批处理大小
+  target_count: 1000      # 目标生成数量
+  diversity_factor: 0.8   # 多样性因子 (0-1)

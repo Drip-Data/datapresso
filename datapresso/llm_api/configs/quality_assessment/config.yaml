@@ -1,0 +1,24 @@
+# Datapresso LLM API - 全局配置 (Global Configuration) for quality_assessment
+# -----------------------------------------
+# 包含全局设置和默认配置
+
+# 默认提供商 - 如果API调用未指定提供商，使用此值
+# 必须匹配model.yaml中'providers'部分的某个键
+default_provider: openai
+
+# 全局设置 - 应用于所有提供商，除非在特定提供商配置中被覆盖
+global_settings:
+  max_retries: 3          # API调用失败时的重试次数
+  retry_delay: 1.0        # 首次重试前的延迟秒数（使用指数退避）
+  timeout: 120            # API请求超时秒数
+  temperature: 0.7        # 默认温度值
+  max_tokens: 4096        # 默认最大令牌数
+
+# 质量评估设置 - 特定于质量评估阶段的设置
+quality_assessment_settings:
+  min_quality_score: 0.7  # 最低质量分数
+  assessment_criteria:    # 评估标准权重
+    clarity: 0.25
+    coherence: 0.25
+    accuracy: 0.25
+    relevance: 0.25

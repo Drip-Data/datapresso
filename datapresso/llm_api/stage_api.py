@@ -3,11 +3,12 @@ Provides a stage-specific wrapper around LLMAPIManager for simplified usage.
 """
 
 import logging
+import os
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Union
 
-# Assuming config_loader and LLMAPIManager are in the same directory or accessible
-from .config_loader import load_llm_config
+# Import from the same directory
+from .config_loader import load_llm_config, create_config_directory, migrate_legacy_config
 from .llm_api_manager import LLMAPIManager
 
 logger = logging.getLogger(__name__)
@@ -45,8 +46,35 @@ class StageLLMApi:
 
     def _initialize(self):
         """Loads configuration and initializes the LLM manager."""
-        config_path = self.config_dir / f"{self.stage_name}.yaml"
+        # Define paths for both legacy and new config structures
+        legacy_config_path = self.config_dir / f"{self.stage_name}.yaml"
+        new_config_dir = self.config_dir / self.stage_name
+        template_dir = Path(os.path.dirname(os.path.abspath(__file__))) / "templates"
+
         try:
+            # Check if new config directory exists
+            if new_config_dir.is_dir():
+                self.logger.debug(f"Using new directory-based configuration at {new_config_dir}")
+                config_path = new_config_dir
+            # Check if legacy config file exists
+            elif legacy_config_path.is_file():
+                self.logger.info(f"Found legacy configuration file at {legacy_config_path}")
+                self.logger.info(f"Migrating to new directory structure at {new_config_dir}...")
+
+                # Migrate legacy config to new structure
+                if migrate_legacy_config(legacy_config_path, new_config_dir):
+                    self.logger.info(f"Successfully migrated legacy config to {new_config_dir}")
+                    config_path = new_config_dir
+                else:
+                    self.logger.warning(f"Migration failed, falling back to legacy config at {legacy_config_path}")
+                    config_path = legacy_config_path
+            else:
+                # Neither exists, create new config directory
+                self.logger.info(f"No configuration found for stage '{self.stage_name}', creating default configuration")
+                config_path = create_config_directory(self.stage_name, self.config_dir, template_dir)
+                self.logger.info(f"Created default configuration at {config_path}")
+
+            # Load configuration
             self.config = load_llm_config(config_path)
             self.llm_manager = LLMAPIManager(config=self.config, logger=self.logger.getChild("LLMAPIManager"))
 
@@ -56,8 +84,8 @@ class StageLLMApi:
 
             self.logger.info(f"Successfully initialized using config: {config_path}")
 
-        except FileNotFoundError:
-            self.logger.error(f"Configuration file not found at {config_path}. LLM calls for stage '{self.stage_name}' will fail.")
+        except FileNotFoundError as e:
+            self.logger.error(f"Configuration not found: {e}. LLM calls for stage '{self.stage_name}' will fail.")
             # Keep self.llm_manager as None
         except Exception as e:
             self.logger.error(f"Failed to initialize LLM API for stage '{self.stage_name}': {e}", exc_info=True)

@@ -1,0 +1,75 @@
+# Datapresso LLM API - 模型配置 (Model Configuration) for data_generator
+# -----------------------------------------
+# 包含LLM提供商设置、模型参数等
+
+# 提供商配置
+# 定义此阶段可以使用的LLM服务提供商
+providers:
+  # --- 官方云服务提供商 ---
+  openai:
+    provider_type: openai
+    api_key: env(OPENAI_API_KEY)  # 推荐：从环境变量读取API密钥
+    api_base: https://api.openai.com/v1  # 可选：API基础URL
+    models:
+      default: gpt-4-turbo  # 默认模型
+      alternatives:         # 备选模型
+        - gpt-4-0125-preview
+        - gpt-3.5-turbo
+    parameters:
+      temperature: 0.7
+      max_tokens: 4096
+      top_p: 1.0
+      frequency_penalty: 0.0
+      presence_penalty: 0.0
+
+  anthropic:
+    provider_type: anthropic
+    api_key: env(ANTHROPIC_API_KEY)
+    models:
+      default: claude-3-opus-20240229
+      alternatives:
+        - claude-3-sonnet-20240229
+        - claude-3-haiku-20240307
+    parameters:
+      temperature: 0.7
+      max_tokens: 4096
+      top_p: 1.0
+
+  gemini:
+    provider_type: gemini
+    api_key: env(GOOGLE_API_KEY)
+    models:
+      default: gemini-1.5-pro-latest
+      alternatives:
+        - gemini-1.5-flash-latest
+    parameters:
+      temperature: 0.8
+      max_tokens: 8192
+      top_p: 0.95
+
+  deepseek:
+    provider_type: deepseek
+    api_key: env(DEEPSEEK_API_KEY)
+    models:
+      default: deepseek-chat
+    parameters:
+      temperature: 0.7
+      max_tokens: 4096
+
+  # --- 本地/自定义提供商 ---
+  my_custom_openai_endpoint:
+    provider_type: generic_openai
+    api_base: http://localhost:8000/v1  # 必需：基础URL
+    model: mistralai/Mixtral-8x7B-Instruct-v0.1  # 必需：端点预期的模型名称
+    parameters:
+      temperature: 0.6
+      max_tokens: 4000
+
+  local_llama3_8b:
+    provider_type: local
+    model_path: models/llama3-8b-instruct  # 模型目录路径
+    device: cuda       # 'cuda'或'cpu'
+    dtype: float16     # 'float16'或'float32'
+    parameters:
+      temperature: 0.6
+      max_tokens: 2048
