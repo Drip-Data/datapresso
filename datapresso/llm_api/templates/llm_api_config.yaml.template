@@ -1,0 +1,116 @@
+# Datapresso LLM API Configuration Template
+# -----------------------------------------
+# This template is used to generate default configuration files for different
+# Datapresso stages (e.g., data_generator, quality_assessor) within the
+# `datapresso/datapresso/llm_api/configs/` directory.
+#
+# Users should edit the generated YAML files in the `configs/` directory,
+# NOT this template directly.
+#
+# It is STRONGLY recommended to use environment variables for API keys
+# using the `env(VAR_NAME)` syntax.
+
+# Default provider to use for this stage if not explicitly specified in the API call.
+# Must match one of the keys under the 'providers' section below.
+default_provider: openai
+
+# Global settings applied to all providers unless overridden in a specific provider's config.
+global_settings:
+  max_retries: 3          # Number of retries on API call failure.
+  retry_delay: 1.0        # Initial delay in seconds before the first retry (exponential backoff is used).
+  timeout: 120            # Timeout in seconds for API requests.
+  # temperature: 0.7      # Example: You could set a global default temperature here.
+  # max_tokens: 2048      # Example: You could set a global default max_tokens here.
+
+# Provider configurations section.
+# Define each LLM service provider you want this stage to be able to use.
+providers:
+
+  # --- Official Cloud Providers ---
+  openai:
+    provider_type: openai
+    api_key: env(OPENAI_API_KEY) # Recommended: Reads OPENAI_API_KEY from environment variables.
+    model: gpt-4-turbo           # Default model for this provider.
+    temperature: 0.7
+    max_tokens: 4096
+    # cost_per_1k_tokens: ... # Optional override
+
+  anthropic:
+    provider_type: anthropic
+    api_key: env(ANTHROPIC_API_KEY)
+    model: claude-3-opus-20240229
+    temperature: 0.7
+    max_tokens: 4096
+
+  gemini:
+    provider_type: gemini
+    api_key: env(GOOGLE_API_KEY)
+    model: gemini-1.5-pro-latest
+    temperature: 0.8
+    max_tokens: 8192
+
+  deepseek:
+    provider_type: deepseek
+    api_key: env(DEEPSEEK_API_KEY)
+    model: deepseek-chat
+    temperature: 0.7
+    max_tokens: 4096
+
+  # --- Custom / Local Providers ---
+  # Example: Custom OpenAI-compatible API (e.g., OpenRouter, local vLLM/TGI)
+  my_custom_openai_endpoint:
+    provider_type: generic_openai
+    api_base: http://localhost:8000/v1 # REQUIRED: The base URL.
+    # api_key: env(MY_CUSTOM_KEY)      # Optional: API key if needed.
+    model: mistralai/Mixtral-8x7B-Instruct-v0.1 # REQUIRED: Model name expected by endpoint.
+    temperature: 0.6
+    max_tokens: 4000
+
+  # Example: Local model via Hugging Face transformers
+  local_llama3_8b:
+    provider_type: local
+    model_path: /path/to/your/Llama-3-8B-Instruct # REQUIRED: Path to model directory.
+    device: cuda         # Optional: 'cuda' or 'cpu'.
+    dtype: float16       # Optional: 'float16' or 'float32'.
+    temperature: 0.6
+    max_tokens: 2048
+
+# --- System Prompt Templates (Optional) ---
+# Define reusable system prompts for this stage. Referenced by name.
+system_prompt_templates:
+  default: "You are a helpful AI assistant."
+  code_explainer: "You are an expert programmer. Explain the following code snippet clearly and concisely, highlighting potential issues and suggesting improvements."
+  summarizer: "Summarize the following text accurately, capturing the main points and key information."
+  data_extractor: "Extract the requested information accurately and completely from the provided text. Only output the extracted data in the specified format."
+  quality_assessor: "Evaluate the quality of the provided text based on clarity, coherence, accuracy, and relevance. Provide a score and justification."
+
+# --- Output Schema Templates (Optional) ---
+# Define reusable JSON schemas for structured output for this stage. Referenced by name.
+output_schema_templates:
+  person_info:
+    type: object
+    properties:
+      name: { type: string, description: "Full name of the person mentioned." }
+      age: { type: integer, description: "Age of the person, if mentioned." }
+      city: { type: string, description: "City of residence, if mentioned." }
+      profession: { type: string, description: "Profession or job title, if mentioned."}
+    required: [name]
+
+  code_review:
+    type: object
+    properties:
+      has_issues: { type: boolean, description: "Does the code snippet have potential issues (e.g., bugs, style problems, inefficiencies)?" }
+      issues_found: { type: array, items: { type: string }, description: "List of specific issues identified in the code." }
+      suggestions: { type: array, items: { type: string }, description: "List of concrete suggestions for improving the code." }
+      overall_assessment: { type: string, description: "A brief summary of the code's quality and purpose." }
+    required: [has_issues, overall_assessment]
+
+  quality_score:
+    type: object
+    properties:
+      clarity: { type: number, description: "Score from 1 (low) to 5 (high) for clarity." }
+      coherence: { type: number, description: "Score from 1 (low) to 5 (high) for coherence." }
+      accuracy: { type: number, description: "Score from 1 (low) to 5 (high) for accuracy relative to any source/context." }
+      relevance: { type: number, description: "Score from 1 (low) to 5 (high) for relevance to the prompt/task." }
+      justification: { type: string, description: "Brief explanation for the scores given."}
+    required: [clarity, coherence, accuracy, relevance, justification]

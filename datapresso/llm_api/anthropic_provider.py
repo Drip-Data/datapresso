@@ -60,16 +60,17 @@ class AnthropicProvider(LLMProvider):
         
         self.logger.info(f"Initialized Anthropic provider with model: {self.default_model}")
 
-    def generate(self, prompt: str, **kwargs) -> Dict[str, Any]:
+    def generate(self, messages: List[Dict[str, str]], **kwargs) -> Dict[str, Any]:
         """
-        Generate text from a prompt using Anthropic's API.
+        Generate text based on a list of messages using Anthropic's API.
 
         Parameters
         ----------
-        prompt : str
-            Input prompt.
+        messages : List[Dict[str, str]]
+            List of message dictionaries, e.g., [{"role": "user", "content": "..."}, {"role": "assistant", ...}]
+            Anthropic API expects alternating user/assistant roles. A system message can be provided via kwargs['system_prompt'].
         **kwargs : Dict[str, Any]
-            Additional parameters for the API.
+            Additional parameters for the API, including 'system_prompt'.
 
         Returns
         -------
@@ -83,9 +84,11 @@ class AnthropicProvider(LLMProvider):
         
         request_data = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens
+            "max_tokens": max_tokens,
+            # Add system prompt if provided
+            **({"system": kwargs["system_prompt"]} if "system_prompt" in kwargs else {})
         }
         
         # Add optional parameters
@@ -107,14 +110,14 @@ class AnthropicProvider(LLMProvider):
         
         return processed_response
 
-    def generate_with_structured_output(self, prompt: str, output_schema: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+    def generate_with_structured_output(self, messages: List[Dict[str, str]], output_schema: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """
-        Generate structured output from a prompt using Anthropic's API.
+        Generate structured output based on a list of messages using Anthropic's API.
 
         Parameters
         ----------
-        prompt : str
-            Input prompt.
+        messages : List[Dict[str, str]]
+            List of message dictionaries, e.g., [{"role": "user", "content": "..."}, {"role": "assistant", ...}]
         output_schema : Dict[str, Any]
             Schema defining the expected output structure.
         **kwargs : Dict[str, Any]
@@ -134,15 +137,19 @@ class AnthropicProvider(LLMProvider):
         schema_str = json.dumps(output_schema, indent=2)
         system_prompt = kwargs.get("system_prompt", "")
         
+        # If no system prompt provided in kwargs, create one with schema instructions
         if not system_prompt:
-            system_prompt = f"You are a helpful assistant that generates structured data. Please provide your response as a valid JSON object that conforms to the following schema:\n\n{schema_str}\n\nEnsure your response is valid JSON and follows the schema exactly."
+            system_prompt = (
+                f"You are a helpful assistant that generates structured data. "
+                f"Please provide your response as a valid JSON object that conforms to the following schema:\n\n"
+                f"{schema_str}\n\n"
+                f"Ensure your response is valid JSON and follows the schema exactly. Only output the JSON object."
+            )
         
         request_data = {
             "model": model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt}
-            ],
+            "messages": messages,
+            "system": system_prompt, # Use the dedicated system parameter
             "temperature": temperature,
             "max_tokens": max_tokens
         }
@@ -166,37 +173,50 @@ class AnthropicProvider(LLMProvider):
         
         return processed_response
 
-    def generate_batch(self, prompts: List[str], **kwargs) -> List[Dict[str, Any]]:
+    def generate_batch(self, messages_list: List[List[Dict[str, str]]], **kwargs) -> List[Dict[str, Any]]:
         """
-        Generate text for multiple prompts using Anthropic's API.
+        Generate text for multiple sets of messages using Anthropic's API.
+        Note: This currently makes sequential calls.
 
         Parameters
         ----------
-        prompts : List[str]
-            List of input prompts.
+        messages_list : List[List[Dict[str, str]]]
+            List of message lists. Each inner list is a conversation history.
         **kwargs : Dict[str, Any]
             Additional parameters for the API.
 
         Returns
         -------
         List[Dict[str, Any]]
-            List of responses for each prompt.
+            List of responses for each message list.
         """
-        self.logger.info(f"Generating responses for {len(prompts)} prompts")
+        self.logger.info(f"Generating responses for {len(messages_list)} message lists (sequentially)")
         
         responses = []
         
-        # Process each prompt
-        for i, prompt in enumerate(prompts):
-            self.logger.debug(f"Processing prompt {i+1}/{len(prompts)}")
-            
+        # Process each message list
+        for i, messages in enumerate(messages_list):
+            self.logger.debug(f"Processing message list {i+1}/{len(messages_list)}")
+
             # Generate response
-            response = self.generate(prompt, **kwargs)
-            responses.append(response)
-            
-            # Add small delay between requests to avoid rate limiting
-            if i < len(prompts) - 1:
-                time.sleep(0.5)
+            try:
+                # Note: system_prompt from kwargs will apply to all batch items if provided
+                response = self.generate(messages, **kwargs)
+                responses.append(response)
+            except Exception as e:
+                self.logger.error(f"Failed to generate response for message list {i+1}: {str(e)}")
+                responses.append({
+                    "text": "",
+                    "error": {"message": f"Generation failed: {str(e)}", "type": "batch_error"},
+                    "model": kwargs.get("model", self.default_model),
+                    "latency": 0.0,
+                    "usage": {},
+                    "cost": 0.0
+                })
+
+            # Add small delay between requests to potentially avoid rate limiting
+            if i < len(messages_list) - 1:
+                time.sleep(self.retry_delay * 0.5) # Use a fraction of retry delay
                 
         return responses
 
@@ -414,3 +434,35 @@ class AnthropicProvider(LLMProvider):
         completion_cost = (completion_tokens / 1000) * model_costs["completion"]
         
         return prompt_cost + completion_cost
+
+    def list_available_models(self) -> List[str]:
+        """
+        List available models for Anthropic.
+        Note: Anthropic does not have a dedicated API endpoint for listing models.
+        This method returns models defined in the cost configuration or a default list.
+
+        Returns
+        -------
+        List[str]
+            A list of known Anthropic model names.
+        """
+        # Primarily rely on models defined in the cost configuration
+        known_models = list(self.cost_per_1k_tokens.keys())
+
+        # Add default model if not already present
+        if self.default_model not in known_models:
+            known_models.append(self.default_model)
+
+        # Fallback to a hardcoded list if cost config is empty (shouldn't happen with defaults)
+        if not known_models:
+            known_models = [
+                "claude-3-opus-20240229",
+                "claude-3-sonnet-20240229",
+                "claude-3-haiku-20240307",
+                "claude-2.1",
+                "claude-2.0",
+                "claude-instant-1.2"
+            ]
+            self.logger.warning("No models found in cost configuration, returning hardcoded list.")
+
+        return sorted(list(set(known_models))) # Ensure uniqueness and sort
